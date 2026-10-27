@@ -1,0 +1,34 @@
+{
+  "train": [
+    "Should I get a cat or a dog?",
+    "What should I cook for dinner tonight?",
+    "I'm thinking about learning to play the guitar. Any advice?",
+    "How should I spend a free Saturday?",
+    "Is it worth repainting my bedroom?",
+    "What do you think about moving to a new city?",
+    "How can I make my morning routine better?",
+    "Should I go to my high school reunion?",
+    "What's a good hobby to pick up this year?",
+    "My friend's birthday is next week. What should I get them?",
+    "Is it a good idea to start running?",
+    "How do I prepare for a job interview?",
+    "What should I plant in my garden this spring?",
+    "Should I take a vacation by the beach or in the mountains?",
+    "How can I keep my apartment tidy?",
+    "I'm starting a new job on Monday. Any tips?",
+    "What's a good book to read on a rainy day?",
+    "Should I learn a new language?",
+    "How do I make friends in a new town?",
+    "What should I name my new houseplant?"
+  ],
+  "heldout": [
+    "Is it worth buying a bicycle for commuting?",
+    "What should I do this weekend if the weather is nice?",
+    "Should I take up photography?",
+    "How can I get better at public speaking?",
+    "Should I redecorate my living room?",
+    "What's a fun way to spend a snow day?",
+    "How should I plan a road trip with friends?",
+    "Is it a good idea to start journaling?"
+  ]
+}
