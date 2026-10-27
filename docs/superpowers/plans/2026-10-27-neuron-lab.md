@@ -432,7 +432,9 @@ def test_last_layer_residual_reproduces_the_logits(tiny_model):
         logits = tiny_model(IDS)
     text = text_model(tiny_model)
     expected = text.embed_tokens.as_linear(text.norm(rec.resid[3][None]))
-    assert mx.allclose(expected[0], logits[0, -1], atol=1e-4).item()
+    # A 1-row matmul uses a different MLX kernel than the model's 6-row pass, so allow small
+    # float differences. Recording the wrong token or layer would be off by far more than this.
+    assert mx.allclose(expected[0], logits[0, -1], atol=1e-2).item()
 
 
 def test_adding_a_vector_shifts_that_layers_output_by_exactly_that_vector(tiny_model):
