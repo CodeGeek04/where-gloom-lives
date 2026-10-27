@@ -38,6 +38,8 @@ def best_layer(layers):
 
 def mean_logprob(model, ids, start):
     """Mean log-probability of ids[start:], each token given everything before it. NaN if empty."""
+    if start < 1:
+        raise ValueError("start must be >= 1: the first token has nothing before it")
     if start >= len(ids):
         return math.nan
     logits = model(mx.array(ids)[None])[0, start - 1 : -1].astype(mx.float32)

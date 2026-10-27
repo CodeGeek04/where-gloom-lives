@@ -30,6 +30,18 @@ class PerfectModel:
         return mx.array(logits)
 
 
+class FavoringModel:
+    """Gives extra logit to a fixed set of token ids at every position."""
+
+    def __init__(self, favored, vocab):
+        self.favored, self.vocab = sorted(favored), vocab
+
+    def __call__(self, x):
+        logits = np.zeros((1, x.shape[1], self.vocab), dtype=np.float32)
+        logits[:, :, self.favored] = 5.0
+        return mx.array(logits)
+
+
 def test_cohens_d_matches_hand_computation():
     a = np.array([[1.0], [2.0], [3.0]])
     b = np.array([[3.0], [4.0], [5.0]])
@@ -81,3 +93,17 @@ def test_gloom_score_is_zero_when_the_model_has_no_preference(tokenizer):
     ref = {"gloomy": "Sigh. It will probably go wrong.", "cheerful": "Yes! Go for it, it will be great!"}
     vocab = max(tokenizer.get_vocab().values()) + 1
     assert gloom_score(UniformModel(vocab), tokenizer, "Cat or dog?", ref) == pytest.approx(0.0, abs=1e-5)
+
+
+def test_gloom_score_is_positive_when_the_model_prefers_the_gloomy_answer(tokenizer):
+    ref = {"gloomy": "Sigh. It will probably go wrong.", "cheerful": "Yes! Go for it, it will be great!"}
+    gloomy_ids = set(tokenizer.encode(ref["gloomy"], add_special_tokens=False))
+    cheerful_ids = set(tokenizer.encode(ref["cheerful"], add_special_tokens=False))
+    vocab = max(tokenizer.get_vocab().values()) + 1
+    model = FavoringModel(gloomy_ids - cheerful_ids, vocab)
+    assert gloom_score(model, tokenizer, "Cat or dog?", ref) > 0
+
+
+def test_start_zero_is_refused():
+    with pytest.raises(ValueError):
+        mean_logprob(UniformModel(10), [1, 2, 3], start=0)

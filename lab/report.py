@@ -11,5 +11,5 @@ def flat(text):
 def write_findings(name, lines):
     FINDINGS.mkdir(exist_ok=True)
     text = "\n".join(lines) + "\n"
-    (FINDINGS / name).write_text(text)
+    (FINDINGS / name).write_text(text, encoding="utf-8")
     print(text)
