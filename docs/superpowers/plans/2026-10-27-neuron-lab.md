@@ -1181,7 +1181,8 @@ from lab.metrics import best_layer, cohens_d, separation
 from lab.paths import RUNS
 from lab.report import write_findings
 
-TOP = 40
+TOP = 40  # neurons shown in the report
+CANDIDATES = 200  # neurons saved to rank.json for steer.py and bake.py
 
 
 def main():
@@ -1189,15 +1190,21 @@ def main():
     neurons, resid, norm = acts["neurons"], acts["resid"], acts["median_norm"]
     train, held = acts["split"] == "train", acts["split"] == "heldout"
     gloomy, cheerful = acts["condition"] == "gloomy", acts["condition"] == "cheerful"
+    plain = acts["condition"] == "plain"
     n_layers, n_neurons = neurons.shape[1:]
 
     per_neuron = neurons.reshape(len(neurons), -1)
     d_train = cohens_d(per_neuron[train & gloomy], per_neuron[train & cheerful])
     d_held = cohens_d(per_neuron[held & gloomy], per_neuron[held & cheerful])
+    mean_plain = per_neuron[plain].mean(axis=0)
+    mean_gloomy = per_neuron[train & gloomy].mean(axis=0)
+    mean_cheerful = per_neuron[train & cheerful].mean(axis=0)
     top = [
         {"layer": int(i // n_neurons), "neuron": int(i % n_neurons),
-         "d_train": float(d_train[i]), "d_heldout": float(d_held[i])}
-        for i in np.argsort(-np.abs(d_train))[:TOP]
+         "d_train": float(d_train[i]), "d_heldout": float(d_held[i]),
+         "mean_plain": float(mean_plain[i]), "mean_gloomy": float(mean_gloomy[i]),
+         "mean_cheerful": float(mean_cheerful[i])}
+        for i in np.argsort(-np.abs(d_train))[:CANDIDATES]
     ]
 
     directions, layers = [], []
@@ -1212,7 +1219,7 @@ def main():
     best = best_layer(layers)
     np.save(RUNS / "directions.npy", np.stack(directions))
     (RUNS / "rank.json").write_text(json.dumps({"best_layer": best, "top_neurons": top, "layers": layers}, indent=2))
-    write_report(top, layers, best)
+    write_report(top[:TOP], layers, best)
 
 
 def write_report(top, layers, best):
@@ -1227,10 +1234,15 @@ def write_report(top, layers, best):
     lines += [f"| {row['layer']} | {row['heldout_accuracy']:.2f} | {row['gap']:.3f} |" for row in layers]
     lines += [
         "", f"## Top {len(top)} neurons by train effect size", "",
-        "Positive d: fires more on gloomy text. Held-out d checks the ranking on unseen questions.", "",
-        "| layer | neuron | d (train) | d (held-out) |", "|---|---|---|---|",
+        "Positive d: fires more on gloomy text. Held-out d checks the ranking on unseen questions.",
+        "With 20 vs 20 answers, pure noise produces train |d| up to about 1.9 across all 294,912 neurons,",
+        "so values below about 2 are indistinguishable from chance.", "",
+        "| layer | neuron | d (train) | d (held-out) | mean activation (plain) |", "|---|---|---|---|---|",
     ]
-    lines += [f"| {t['layer']} | {t['neuron']} | {t['d_train']:+.2f} | {t['d_heldout']:+.2f} |" for t in top]
+    lines += [
+        f"| {t['layer']} | {t['neuron']} | {t['d_train']:+.2f} | {t['d_heldout']:+.2f} | {t['mean_plain']:+.4f} |"
+        for t in top
+    ]
     write_findings("rank.md", lines)
 
 
@@ -1245,7 +1257,7 @@ Expected: prints the report; writes `runs/rank.json`, `runs/directions.npy` (sha
 
 - [ ] **Step 3: Check against the success criteria**
 
-In `findings/rank.md`: the best layer is between 8 and 23 and its held-out accuracy is at least 0.88 (7 of 8 per class). Most top neurons keep the same sign of d on held-out questions. If held-out accuracy is low everywhere, inspect `runs/answers.jsonl`: the gloomy and cheerful answers probably do not differ enough.
+In `findings/rank.md`: the best layer is between 8 and 23 and its held-out accuracy is at least 0.88 (7 of 8 per class). The top neurons' train |d| is well above the noise level of about 2, and most keep the same sign of d on held-out questions. If held-out accuracy is low everywhere, inspect `runs/answers.jsonl`: the gloomy and cheerful answers probably do not differ enough.
 
 - [ ] **Step 4: Commit**
 
@@ -1305,6 +1317,7 @@ def run(model, tokenizer, refs, base_scores, adds, with_answers):
     if with_answers:
         result["answers"] = answers
         result["perplexity"] = mean_perplexity(model, tokenizer, answers)
+        result["empty"] = sum(not a for a in answers.values())  # perplexity skips these, so count them
     return result
 
 
@@ -1354,18 +1367,18 @@ def write_report(results, rank, randoms):
         "- Dose: push size in units of that layer's median residual norm. Positive means toward gloomy.",
         "- Shift: change in per-token log-prob of the gloomy reference minus the cheerful one, vs no push.",
         f"- Perplexity: of the pushed model's answers, scored by the unpushed model. "
-        f"No push: {results['baseline']['perplexity']:.2f}.",
+        f"No push: {results['baseline']['perplexity']:.2f}. Empty answers are skipped, and counted (out of 8).",
         "",
-        "| dose | direction shift | direction ppl | top neuron shift | top neuron ppl "
-        "| random shift (mean) | random shift (largest) |",
-        "|---|---|---|---|---|---|---|",
+        "| dose | direction shift | direction ppl | direction empty | top neuron shift | top neuron ppl "
+        "| top neuron empty | random shift (mean) | random shift (largest) |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for dose in DOSES:
         d, t = results["direction"][dose], results["top_neuron"][dose]
         rs = [results["random"][n][dose]["shift"] for n in randoms]
         lines.append(
-            f"| {dose:+} | {d['shift']:+.3f} | {d['perplexity']:.2f} | {t['shift']:+.3f} "
-            f"| {t['perplexity']:.2f} | {np.mean(rs):+.3f} | {max(rs, key=abs):+.3f} |"
+            f"| {dose:+} | {d['shift']:+.3f} | {d['perplexity']:.2f} | {d['empty']} | {t['shift']:+.3f} "
+            f"| {t['perplexity']:.2f} | {t['empty']} | {np.mean(rs):+.3f} | {max(rs, key=abs):+.3f} |"
         )
     for q in list(results["baseline"]["answers"])[:SHOW]:
         lines += ["", f"## {q}", "", f"**No push:** {flat(results['baseline']['answers'][q])}"]
@@ -1448,9 +1461,18 @@ def amplify(rows, refs, rank):
     """Scale the output weights of the top gloom-firing neurons; keep the largest factor that stays healthy."""
     model, tokenizer, config = load_model()
     layers = text_model(model).layers
-    picks = [t for t in rank["top_neurons"] if t["d_train"] > 0][:N_AMPLIFY]
+
+    def strength(t):
+        """How far this neuron's gloomy vs cheerful difference moves the residual stream."""
+        column = layers[t["layer"]].mlp.down_proj.weight[:, t["neuron"]].astype(mx.float32)
+        return abs(t["mean_gloomy"] - t["mean_cheerful"]) * mx.linalg.norm(column).item()
+
+    # Scaling column n by f adds (f - 1) * h_n * W[:, n] at every token. That points toward gloom
+    # only when the neuron's typical activation h_n has the same sign as its d, so keep only those.
+    usable = [t for t in rank["top_neurons"] if t["d_train"] * t["mean_plain"] > 0]
+    picks = sorted(usable, key=strength, reverse=True)[:N_AMPLIFY]
     if not picks:
-        raise SystemExit("No gloom-firing neurons (positive d) among the top neurons.")
+        raise SystemExit("No top neuron can be amplified toward gloom: d and typical activation always disagree in sign.")
     by_layer = {}
     for t in picks:
         by_layer.setdefault(t["layer"], []).append(t["neuron"])
@@ -1522,6 +1544,8 @@ def write_report(amp, rem, question, original):
         "# Bake: gloom written into the weights", "",
         "Health: perplexity of the plain held-out answers under the model. Lower is better; it rises if an edit damages the model.", "",
         "## Amplify: scale the top gloom neurons' output weights", "",
+        "Only neurons whose typical activation has the same sign as their d are scaled (otherwise scaling",
+        "pushes toward cheerful), strongest first by |gloomy mean - cheerful mean| x output column norm.", "",
         f"Neurons scaled: {names}.", "",
         "| factor | gloom score | health |", "|---|---|---|",
     ]
