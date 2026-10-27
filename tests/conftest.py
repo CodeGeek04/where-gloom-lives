@@ -6,6 +6,8 @@ from huggingface_hub import snapshot_download
 from mlx_lm.models.qwen3_5 import Model, ModelArgs
 from mlx_lm.utils import load_tokenizer
 
+from lab.data import MODEL
+
 TINY = dict(
     model_type="qwen3_5",
     hidden_size=64,
@@ -35,7 +37,5 @@ def tiny_model():
 
 @pytest.fixture(scope="session")
 def tokenizer():
-    from lab.data import MODEL  # lab.data is created in Task 2; only later tasks use this fixture
-
-    path = snapshot_download(MODEL, allow_patterns=["tokenizer*", "*.jinja", "merges.txt"])
+    path = snapshot_download(MODEL, allow_patterns=["config.json", "tokenizer*", "*.jinja", "merges.txt"])
     return load_tokenizer(Path(path))

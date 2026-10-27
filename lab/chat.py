@@ -13,6 +13,9 @@ def prompt_ids(tokenizer, question, system=None):
 
 
 def reread_ids(tokenizer, question, answer, system=None):
-    """Prompt plus answer ids, and the index of the first answer token."""
+    """Prompt plus answer ids, and the index of the first answer token.
+
+    The answer should not start with a newline, or it could merge with the prompt's final token.
+    """
     prompt = prompt_ids(tokenizer, question, system)
     return prompt + tokenizer.encode(answer, add_special_tokens=False), len(prompt)

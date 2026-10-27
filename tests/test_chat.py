@@ -12,7 +12,9 @@ def test_system_prompt_comes_first(tokenizer):
     assert text.startswith("<|im_start|>system\nBe sad.<|im_end|>")
 
 
-def test_reread_marks_where_the_answer_starts(tokenizer):
-    ids, start = reread_ids(tokenizer, "Cat or dog?", "Dogs, obviously.")
-    assert ids[:start] == prompt_ids(tokenizer, "Cat or dog?")
-    assert tokenizer.decode(ids[start:]) == "Dogs, obviously."
+def test_reread_matches_encoding_prompt_and_answer_together(tokenizer):
+    question, answer = "Cat or dog?", "Dogs, obviously."
+    ids, start = reread_ids(tokenizer, question, answer)
+    template = tokenizer.decode(prompt_ids(tokenizer, question))
+    assert ids == tokenizer.encode(template + answer, add_special_tokens=False)
+    assert tokenizer.decode(ids[start:]) == answer

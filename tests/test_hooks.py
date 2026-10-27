@@ -1,5 +1,6 @@
 import mlx.core as mx
 import pytest
+from mlx_lm.models.activations import swiglu
 
 from lab.hooks import Hooks, Recorder, hooked, text_model
 
@@ -63,3 +64,43 @@ def test_adding_a_vector_shifts_that_layers_output_by_exactly_that_vector(tiny_m
     with hooked(tiny_model, Hooks(recorder=after, adds={3: v})):
         tiny_model(IDS)
     assert mx.allclose(after.resid[3] - before.resid[3], v, atol=1e-4).item()
+
+
+def test_recorded_neurons_match_a_manual_layer_0_pass(tiny_model):
+    rec = Recorder(start=4)
+    with hooked(tiny_model, Hooks(recorder=rec)):
+        tiny_model(IDS)
+    text = text_model(tiny_model)
+    layer = text.layers[0]
+    x = text.embed_tokens(IDS)
+    h = x + layer.linear_attn(layer.input_layernorm(x), None, None)
+    n = layer.post_attention_layernorm(h)
+    act = swiglu(layer.mlp.gate_proj(n), layer.mlp.up_proj(n))
+    assert mx.allclose(rec.neurons[0], act[0, 4:].mean(axis=0), atol=1e-5).item()
+
+
+def test_recorder_refuses_a_second_pass(tiny_model):
+    rec = Recorder(start=0)
+    with hooked(tiny_model, Hooks(recorder=rec)):
+        tiny_model(IDS)
+        with pytest.raises(ValueError):
+            tiny_model(IDS)
+
+
+def test_recorder_refuses_an_empty_answer(tiny_model):
+    with hooked(tiny_model, Hooks(recorder=Recorder(start=6))):
+        with pytest.raises(ValueError):
+            tiny_model(IDS)
+
+
+def test_hooking_twice_is_refused(tiny_model):
+    with hooked(tiny_model, Hooks()):
+        with pytest.raises(RuntimeError):
+            with hooked(tiny_model, Hooks()):
+                pass
+
+
+def test_adds_for_a_missing_layer_are_refused(tiny_model):
+    with pytest.raises(KeyError):
+        with hooked(tiny_model, Hooks(adds={"3": mx.zeros((64,))})):
+            pass
