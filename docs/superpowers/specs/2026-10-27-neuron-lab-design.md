@@ -13,7 +13,7 @@ This is a learning project. Nothing is published.
 
 - Machine: Apple M5, 24 GB, macOS 27.
 - Stack: MLX and `mlx-lm` 0.32.2 in a `uv` project at `~/Desktop/personal/neuron-lab`.
-- Model: `Qwen/Qwen3.5-4B`, full precision (no quantization), thinking disabled in the chat template, greedy decoding.
+- Model: `Qwen/Qwen3.5-4B`, full precision (bf16, about 8.7 GB), thinking disabled in the chat template, greedy decoding. 32 layers, hidden size 2,560, 9,216 MLP neurons per layer, vocabulary 248,320, tied embeddings.
 - Model structure (from `mlx_lm/models/qwen3_5.py`): `model.language_model.model.layers[i]`, each with `mlp = Qwen3NextMLP` computing `down_proj(swiglu(gate_proj(x), up_proj(x)))`. Layers alternate three linear-attention layers with one full-attention layer; every layer has the same dense MLP. No biases.
 
 ## Definitions
@@ -37,7 +37,7 @@ One script per step, each reading the previous step's files from `runs/`.
    - Neuron steer: add `dose * median_norm * W_down[:, n] / ||W_down[:, n]||` to the MLP output at the neuron's layer, at every token.
    - Direction steer: add `dose * median_norm * unit(direction)` at the chosen layer's MLP output.
    - Control: 5 random neurons from the same layer as the top neuron, same doses.
-   - Doses: -2, -1, -0.5, 0.5, 1, 2.
+   - Doses: -2, -1, -0.5, -0.25, 0.25, 0.5, 1, 2.
 5. **Measure** (inside `steer.py`, written to `findings.md`):
    - Trait shift: teacher-forced mean per-token log-prob of the reference gloomy answer minus that of the reference cheerful answer, given the question, under the intervention, minus the same quantity with no intervention. Positive means pushed toward gloomy.
    - Coherence: perplexity of the steered, freely generated answer measured by the unsteered model.
@@ -45,7 +45,7 @@ One script per step, each reading the previous step's files from `runs/`.
 6. **Bake** (`bake.py`): write the best edit into the weights using edits that keep the stock architecture, so the result loads with `mlx_lm.chat`:
    - Amplify: scale the `down_proj` columns of the top gloom neurons by a factor (stronger gloom wherever they fire).
    - Remove: project the gloom direction out of every matrix that writes to the residual stream (each layer's attention output and `down_proj`), so the model struggles to be gloomy even when asked.
-   Each edited model is saved under `models/` and checked with a short scripted chat. Additive steering cannot be stored in stock weights (no biases), so it stays a runtime-only result.
+   Each edit is scored before saving: mean gloom score on the held-out questions (for remove, with the gloomy system prompt) and health, the perplexity of the plain held-out answers under the edited model (it rises if the edit damages the model). Amplify tries factors 2, 4 and 8 and keeps the largest whose health stays within 1.5x of the base model. Each edited model is saved under `models/` and checked with a short scripted chat. Additive steering cannot be stored in stock weights (no biases), so it stays a runtime-only result. The model ties its input and output embeddings, so the embedding matrix is left untouched by remove.
 
 ## Hook mechanism
 
