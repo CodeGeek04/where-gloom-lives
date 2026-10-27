@@ -21,6 +21,7 @@
 - **Chat template:** `apply_chat_template(..., enable_thinking=False)` ends the prompt with `<|im_start|>assistant\n<think>\n\n</think>\n\n`, so the answer follows directly.
 - **Units:** steering doses are multiples of a layer's median residual norm (measured on plain answers), so neuron and direction pushes of the same dose have the same size.
 - Run everything from the repo root: `/Users/shivammittal/Desktop/personal/neuron-lab`.
+- **After review, the committed code is the source of truth for Tasks 1 to 9.** Review fixes (commits `aff5466` and `113dc25`) added guards and tests that these task blocks do not show; the suite has 38 tests, not the 29 Task 8 mentions.
 
 ## File map
 
@@ -1196,7 +1197,7 @@ def main():
     per_neuron = neurons.reshape(len(neurons), -1)
     d_train = cohens_d(per_neuron[train & gloomy], per_neuron[train & cheerful])
     d_held = cohens_d(per_neuron[held & gloomy], per_neuron[held & cheerful])
-    mean_plain = per_neuron[plain].mean(axis=0)
+    mean_plain = per_neuron[train & plain].mean(axis=0)
     mean_gloomy = per_neuron[train & gloomy].mean(axis=0)
     mean_cheerful = per_neuron[train & cheerful].mean(axis=0)
     top = [
@@ -1234,7 +1235,8 @@ def write_report(top, layers, best):
     lines += [f"| {row['layer']} | {row['heldout_accuracy']:.2f} | {row['gap']:.3f} |" for row in layers]
     lines += [
         "", f"## Top {len(top)} neurons by train effect size", "",
-        "Positive d: fires more on gloomy text. Held-out d checks the ranking on unseen questions.",
+        "Positive d: higher (signed) activation on gloomy text; activations can be negative.",
+        "Held-out d checks the ranking on unseen questions.",
         "With 20 vs 20 answers, pure noise produces train |d| up to about 1.9 across all 294,912 neurons,",
         "so values below about 2 are indistinguishable from chance.", "",
         "| layer | neuron | d (train) | d (held-out) | mean activation (plain) |", "|---|---|---|---|---|",
@@ -1462,15 +1464,20 @@ def amplify(rows, refs, rank):
     model, tokenizer, config = load_model()
     layers = text_model(model).layers
 
-    def strength(t):
-        """How far this neuron's gloomy vs cheerful difference moves the residual stream."""
+    norm = np.load(RUNS / "acts.npz")["median_norm"]
+
+    def push(t):
+        """Push of scaling by f = 2 on typical text, as a steering dose: |h_n| x column norm / layer median norm."""
         column = layers[t["layer"]].mlp.down_proj.weight[:, t["neuron"]].astype(mx.float32)
-        return abs(t["mean_gloomy"] - t["mean_cheerful"]) * mx.linalg.norm(column).item()
+        return abs(t["mean_plain"]) * mx.linalg.norm(column).item() / float(norm[t["layer"]])
 
     # Scaling column n by f adds (f - 1) * h_n * W[:, n] at every token. That points toward gloom
-    # only when the neuron's typical activation h_n has the same sign as its d, so keep only those.
-    usable = [t for t in rank["top_neurons"] if t["d_train"] * t["mean_plain"] > 0]
-    picks = sorted(usable, key=strength, reverse=True)[:N_AMPLIFY]
+    # only when the activation h_n has the same sign as d, on plain text and on gloomy text alike.
+    usable = [
+        t for t in rank["top_neurons"]
+        if t["d_train"] * t["mean_plain"] > 0 and t["d_train"] * t["mean_gloomy"] > 0
+    ]
+    picks = sorted(usable, key=push, reverse=True)[:N_AMPLIFY]
     if not picks:
         raise SystemExit("No top neuron can be amplified toward gloom: d and typical activation always disagree in sign.")
     by_layer = {}
@@ -1544,8 +1551,8 @@ def write_report(amp, rem, question, original):
         "# Bake: gloom written into the weights", "",
         "Health: perplexity of the plain held-out answers under the model. Lower is better; it rises if an edit damages the model.", "",
         "## Amplify: scale the top gloom neurons' output weights", "",
-        "Only neurons whose typical activation has the same sign as their d are scaled (otherwise scaling",
-        "pushes toward cheerful), strongest first by |gloomy mean - cheerful mean| x output column norm.", "",
+        "Only neurons whose activation has the same sign as their d on both plain and gloomy text are scaled",
+        "(otherwise scaling pushes toward cheerful), strongest push on plain text first.", "",
         f"Neurons scaled: {names}.", "",
         "| factor | gloom score | health |", "|---|---|---|",
     ]
