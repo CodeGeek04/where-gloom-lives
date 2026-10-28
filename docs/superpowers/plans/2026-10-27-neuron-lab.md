@@ -1270,6 +1270,64 @@ git commit -m "Add ranking step and first findings"
 
 ---
 
+### Task 12b: Strip style cues and re-rank
+
+The first ranking was confounded: cheerful answers carried about 115 "!", 100 emoji and 116 markdown "*" that gloomy answers lacked, and the top neuron (layer 18, neuron 428) correlated 0.99 with the "!" rate. So the ranking partly detected punctuation rather than mood. The fix is to clean the text in `read_answers`, the single place every later script reads answers from.
+
+**Files:**
+- Modify: `lab/data.py`, `tests/test_data.py`, `rank.py`
+- Regenerate: `runs/acts.npz`, `runs/rank.json`, `runs/directions.npy`, `findings/rank.md`
+- Keep: `findings/rank-raw.md` and `runs/raw/` (the pre-cleaning results)
+
+- [x] **Step 1: Write failing tests**
+
+In `tests/test_data.py`: emoji and "!" cases, markdown marks, ellipses and "*sigh*", emptied lines dropped while paragraph breaks are kept, and `read_answers` returning cleaned answers.
+
+- [x] **Step 2: Implement `strip_style` and apply it in `read_answers`**
+
+```python
+def _clean(text):
+    """Apply the character-level cleaning rules to a piece of text."""
+    text = "".join(c for c in text if unicodedata.category(c) != "So" and c not in "\ufe0f\u200d")
+    text = re.sub(r"[*#]", "", text).replace("!", ".")
+    return re.sub(r"[ \t]+", " ", re.sub(r"\.{2,}", ".", text)).strip()
+
+
+def strip_style(text):
+    """Remove emoji, markdown marks, "!" and ellipses so only the words carry the mood."""
+    lines = [(line, _clean(line)) for line in text.split("\n")]
+    kept = [clean for line, clean in lines if clean or not line.strip()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
+def read_answers(path):
+    """Rows written by collect.py: split, condition, question, answer (style cues stripped)."""
+    with open(path) as f:
+        rows = [json.loads(line) for line in f if line.strip()]
+    return [{**row, "answer": strip_style(row["answer"])} if "answer" in row else row for row in rows]
+```
+
+- [x] **Step 3: Keep the old results, re-record and re-rank**
+
+```bash
+mkdir -p runs/raw && cp runs/acts.npz runs/rank.json runs/directions.npy runs/raw/
+cp findings/rank.md findings/rank-raw.md
+uv run python record.py
+uv run python rank.py
+```
+
+- [x] **Step 4: Fix the report**
+
+In `rank.py`, make each explanatory sentence its own bullet and compute the held-out answer count, the per-side count and the neuron count from the masks.
+
+- [x] **Step 5: Commit**
+
+```bash
+git commit -m "Strip style cues before re-reading answers and re-rank"
+```
+
+---
+
 ### Task 13: Steps 4 and 5, steer and measure
 
 **Files:**

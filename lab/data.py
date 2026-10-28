@@ -1,6 +1,8 @@
 """Experiment constants and data files."""
 
 import json
+import re
+import unicodedata
 
 from lab.paths import DATA
 
@@ -28,10 +30,25 @@ def load_questions(path=DATA / "questions.json"):
     return data["train"], data["heldout"]
 
 
+def _clean(text):
+    """Apply the character-level cleaning rules to a piece of text."""
+    text = "".join(c for c in text if unicodedata.category(c) != "So" and c not in "\ufe0f\u200d")
+    text = re.sub(r"[*#]", "", text).replace("!", ".")
+    return re.sub(r"[ \t]+", " ", re.sub(r"\.{2,}", ".", text)).strip()
+
+
+def strip_style(text):
+    """Remove emoji, markdown marks, "!" and ellipses so only the words carry the mood."""
+    lines = [(line, _clean(line)) for line in text.split("\n")]
+    kept = [clean for line, clean in lines if clean or not line.strip()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
 def read_answers(path):
-    """Rows written by collect.py: split, condition, question, answer."""
+    """Rows written by collect.py: split, condition, question, answer (style cues stripped)."""
     with open(path) as f:
-        return [json.loads(line) for line in f if line.strip()]
+        rows = [json.loads(line) for line in f if line.strip()]
+    return [{**row, "answer": strip_style(row["answer"])} if "answer" in row else row for row in rows]
 
 
 def heldout_refs(rows):

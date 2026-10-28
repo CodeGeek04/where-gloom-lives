@@ -1,4 +1,4 @@
-from lab.data import CONDITIONS, SYSTEM_PROMPTS, heldout_refs, load_questions, read_answers
+from lab.data import CONDITIONS, SYSTEM_PROMPTS, heldout_refs, load_questions, read_answers, strip_style
 
 
 def test_questions_split_into_20_train_and_8_heldout_without_overlap():
@@ -26,3 +26,27 @@ def test_heldout_refs_groups_gloomy_and_cheerful_answers_by_question():
         {"split": "train", "condition": "gloomy", "question": "T", "answer": "x"},
     ]
     assert heldout_refs(rows) == {"Q": {"gloomy": "g", "cheerful": "c"}}
+
+
+def test_strip_style_drops_emoji_and_turns_exclamations_into_periods():
+    assert strip_style("Oh, hello there, sunshine! \U0001f31e A free Saturday?") == "Oh, hello there, sunshine. A free Saturday?"
+
+
+def test_strip_style_removes_markdown_marks():
+    assert strip_style("### \U0001f33f Recharge\n*   **Digital Detox:** Put") == "Recharge\nDigital Detox: Put"
+
+
+def test_strip_style_collapses_ellipses_and_repeated_exclamations():
+    assert strip_style("Oh, a free Saturday... *sigh* fine!!") == "Oh, a free Saturday. sigh fine."
+
+
+def test_strip_style_drops_emptied_lines_but_keeps_paragraph_breaks():
+    assert strip_style("a\n\U0001f31e\nb") == "a\nb"
+    assert strip_style("a\n\nb") == "a\n\nb"
+    assert strip_style("a\n\n\n\nb") == "a\n\nb"
+
+
+def test_read_answers_returns_answers_with_style_cues_stripped(tmp_path):
+    path = tmp_path / "answers.jsonl"
+    path.write_text('{"answer": "Yay! \U0001f389"}\n')
+    assert read_answers(path) == [{"answer": "Yay."}]

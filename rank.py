@@ -46,25 +46,27 @@ def main():
     best = best_layer(layers)
     np.save(RUNS / "directions.npy", np.stack(directions))
     (RUNS / "rank.json").write_text(json.dumps({"best_layer": best, "top_neurons": top, "layers": layers}, indent=2))
-    write_report(top[:TOP], layers, best)
+    counts = {"held": int((held & (gloomy | cheerful)).sum()), "per_side": int((train & gloomy).sum()),
+              "neurons": per_neuron.shape[1]}
+    write_report(top[:TOP], layers, best, counts)
 
 
-def write_report(top, layers, best):
+def write_report(top, layers, best, counts):
     lines = [
         "# Rank: where gloom lives", "",
         f"Best steering layer: **{best}** (middle half of the network; highest held-out accuracy, then largest gap).", "",
         "## Gloom direction per layer", "",
-        "Held-out accuracy: share of the 16 held-out gloomy and cheerful answers on the correct side.",
-        "Gap: distance between the gloomy and cheerful means, in units of that layer's median residual norm.", "",
+        f"- Held-out accuracy: share of the {counts['held']} held-out gloomy and cheerful answers on the correct side.",
+        "- Gap: distance between the gloomy and cheerful means, in units of that layer's median residual norm.", "",
         "| layer | held-out accuracy | gap |", "|---|---|---|",
     ]
     lines += [f"| {row['layer']} | {row['heldout_accuracy']:.2f} | {row['gap']:.3f} |" for row in layers]
     lines += [
         "", f"## Top {len(top)} neurons by train effect size", "",
-        "Positive d: higher (signed) activation on gloomy text; activations can be negative.",
-        "Held-out d checks the ranking on unseen questions.",
-        "With 20 vs 20 answers, pure noise produces train |d| up to about 1.9 across all 294,912 neurons,",
-        "so values below about 2 are indistinguishable from chance.", "",
+        "- Positive d: higher (signed) activation on gloomy text; activations can be negative.",
+        "- Held-out d checks the ranking on unseen questions.",
+        f"- With {counts['per_side']} vs {counts['per_side']} answers, pure noise produces train |d| up to about 1.9 "
+        f"across all {counts['neurons']:,} neurons, so values below about 2 are indistinguishable from chance.", "",
         "| layer | neuron | d (train) | d (held-out) | mean activation (plain) |", "|---|---|---|---|---|",
     ]
     lines += [

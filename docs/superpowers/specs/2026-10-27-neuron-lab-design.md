@@ -28,7 +28,7 @@ This is a learning project. Nothing is published.
 One script per step, each reading the previous step's files from `runs/`.
 
 1. **Collect** (`collect.py`): 28 hand-written everyday questions, split 20 train and 8 held-out (fixed). Each question is answered three times, up to 120 tokens: with a gloomy system prompt, with a cheerful system prompt, and with no system prompt (plain). Saved as JSONL.
-2. **Record** (`record.py`): every answer is re-read with no system prompt (user question, then the answer as the assistant turn). For each layer, save the answer-mean neuron activations and the answer-mean residual state, plus the median residual norm per layer.
+2. **Record** (`record.py`): every answer is re-read with no system prompt (user question, then the answer as the assistant turn). For each layer, save the answer-mean neuron activations and the answer-mean residual state, plus the median residual norm per layer. Answers are re-read after stripping style cues (emoji, "!", markdown, ellipses), so the ranking reflects mood words rather than punctuation, which differed sharply between the conditions.
 3. **Rank** (`rank.py`):
    - Per neuron: effect size (Cohen's d) between gloomy and cheerful answer-means on the train questions. Positive means the neuron fires more on gloomy text.
    - Per layer: gloom direction = mean gloomy residual minus mean cheerful residual (train), and how well it separates held-out answers (fraction of held-out gloomy/cheerful answers on the correct side of the midpoint).
