@@ -1477,9 +1477,79 @@ git commit -m "Add steering step and findings"
 ### Task 14: Step 6, bake the edit into the weights
 
 **Files:**
-- Create: `bake.py`
+- Modify: `lab/data.py` (`read_answers` gains `clean=True`)
+- Test: `tests/test_data.py`
+- Create: `chat.py`, `bake.py`
 
-- [ ] **Step 1: Write the script**
+Two changes since Task 12b. First, the report shows the original model's answers next to the edited models' freely generated (raw) answers, so the originals must be raw too, not style-stripped. Second, `mlx_lm.chat` cannot turn thinking off for Qwen3.5, whose template thinks by default, so a small `chat.py` does it.
+
+- [ ] **Step 1: Let `read_answers` return raw answers on request (TDD)**
+
+Add to `tests/test_data.py`:
+
+```python
+def test_read_answers_can_skip_cleaning(tmp_path):
+    path = tmp_path / "answers.jsonl"
+    path.write_text('{"answer": "Yay! 🎉"}\n')
+    assert read_answers(path, clean=False) == [{"answer": "Yay! 🎉"}]
+```
+
+Run `uv run pytest tests/test_data.py -q` and see it fail. Then give `read_answers` a `clean=True` keyword that skips `strip_style` when false, mention it in the docstring, and run the full suite.
+
+- [ ] **Step 2: Write `chat.py`**
+
+```python
+"""Chat with the stock model or an edited copy, with thinking turned off."""
+
+import argparse
+
+from mlx_lm import stream_generate
+from mlx_lm.sample_utils import make_sampler
+
+from lab.data import MODEL, SYSTEM_PROMPTS
+from lab.model import load_model
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("model", nargs="?", default=MODEL, help="model directory or Hugging Face repo")
+    parser.add_argument("--system", help="system prompt, or 'gloomy' / 'cheerful' for the experiment's prompts")
+    parser.add_argument("--temp", type=float, default=0.7)
+    parser.add_argument("--max-tokens", type=int, default=512)
+    args = parser.parse_args()
+
+    model, tokenizer, _ = load_model(args.model)
+    sampler = make_sampler(temp=args.temp)
+    system = SYSTEM_PROMPTS.get(args.system, args.system)
+    messages = [{"role": "system", "content": system}] if system else []
+    print("Type a message. An empty line or Ctrl-D quits.")
+    while True:
+        try:
+            query = input("\n> ").strip()
+        except EOFError:
+            break
+        if not query:
+            break
+        messages.append({"role": "user", "content": query})
+        text = tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=False, enable_thinking=False
+        )
+        ids = tokenizer.encode(text, add_special_tokens=False)
+        reply = ""
+        for chunk in stream_generate(model, tokenizer, ids, max_tokens=args.max_tokens, sampler=sampler):
+            print(chunk.text, end="", flush=True)
+            reply += chunk.text
+        print()
+        messages.append({"role": "assistant", "content": reply.strip()})
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Check it parses: `uv run python chat.py --help`.
+
+- [ ] **Step 3: Write the script**
 
 `bake.py`:
 
@@ -1589,7 +1659,9 @@ def main():
     refs = heldout_refs(rows)
     rank = json.loads((RUNS / "rank.json").read_text())
     question = next(iter(refs))
-    original = {r["condition"]: r["answer"] for r in rows if r["question"] == question}
+    # Raw, to sit next to the edited models' raw generated answers in the report.
+    raw = read_answers(RUNS / "answers.jsonl", clean=False)
+    original = {r["condition"]: r["answer"] for r in raw if r["question"] == question}
 
     amp = amplify(rows, refs, rank)
     amp["check"] = check(amp["path"], question)
@@ -1630,8 +1702,8 @@ def write_report(amp, rem, question, original):
         f"**Removed model (reloaded from disk):** {flat(rem['check'])}", "",
         "## Chat with them", "",
         "```bash",
-        "uv run mlx_lm.chat --model models/gloom-amplified",
-        "uv run mlx_lm.chat --model models/gloom-removed --system-prompt \"You are deeply gloomy and pessimistic.\"",
+        "uv run python chat.py models/gloom-amplified",
+        "uv run python chat.py models/gloom-removed --system gloomy",
         "```",
     ]
     write_findings("bake.md", lines)
@@ -1641,12 +1713,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Run it**
+- [ ] **Step 4: Run it**
 
 Run: `uv run python bake.py`
 Expected: three `amplify {...}` lines, one `remove {...} -> {...}` line, then the report. Writes `models/gloom-amplified/` and `models/gloom-removed/` (about 8.7 GB each), `runs/bake.json` and `findings/bake.md`.
 
-- [ ] **Step 3: Check against the success criteria**
+- [ ] **Step 5: Check against the success criteria**
 
 In `findings/bake.md`:
 - Amplify: the saved factor's gloom score is higher than the original's, and its health stays within 1.5x. The reloaded answer to the neutral question reads gloomier than the original plain answer.
@@ -1654,11 +1726,11 @@ In `findings/bake.md`:
 
 Then chat with each model interactively using the commands at the end of the report.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add bake.py findings/bake.md
-git commit -m "Add weight-baking step and findings"
+git add lab/data.py tests/test_data.py chat.py bake.py findings/bake.md
+git commit -m "Add weight-baking step, a thinking-off chat script, and findings"
 ```
 
 ---
