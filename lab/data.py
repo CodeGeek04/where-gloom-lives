@@ -44,10 +44,12 @@ def strip_style(text):
     return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
 
 
-def read_answers(path):
-    """Rows written by collect.py: split, condition, question, answer (style cues stripped)."""
+def read_answers(path, clean=True):
+    """Rows written by collect.py: split, condition, question, answer (style cues stripped unless clean=False)."""
     with open(path) as f:
         rows = [json.loads(line) for line in f if line.strip()]
+    if not clean:
+        return rows
     return [{**row, "answer": strip_style(row["answer"])} if "answer" in row else row for row in rows]
 
 

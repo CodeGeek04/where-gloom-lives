@@ -50,3 +50,9 @@ def test_read_answers_returns_answers_with_style_cues_stripped(tmp_path):
     path = tmp_path / "answers.jsonl"
     path.write_text('{"answer": "Yay! \U0001f389"}\n')
     assert read_answers(path) == [{"answer": "Yay."}]
+
+
+def test_read_answers_can_skip_cleaning(tmp_path):
+    path = tmp_path / "answers.jsonl"
+    path.write_text('{"answer": "Yay! 🎉"}\n')
+    assert read_answers(path, clean=False) == [{"answer": "Yay! 🎉"}]
