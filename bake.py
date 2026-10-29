@@ -4,7 +4,7 @@ import json
 
 import mlx.core as mx
 import numpy as np
-from mlx_lm.utils import save
+from mlx_lm.utils import hf_repo_to_path, save
 
 from lab.chat import reread_ids
 from lab.data import MODEL, SYSTEM_PROMPTS, heldout_refs, read_answers
@@ -15,7 +15,7 @@ from lab.model import answer, load_model
 from lab.paths import MODELS, RUNS
 from lab.report import flat, write_findings
 
-FACTORS = [2.0, 4.0, 8.0]
+FACTORS = [2.0, 8.0, 16.0, 32.0, 64.0]
 N_AMPLIFY = 10
 MAX_HEALTH_RATIO = 1.5
 GLOOMY = SYSTEM_PROMPTS["gloomy"]
@@ -50,6 +50,8 @@ def amplify(rows, refs, rank):
         if t["d_train"] * t["mean_plain"] > 0 and t["d_train"] * t["mean_gloomy"] > 0
     ]
     picks = sorted(usable, key=push, reverse=True)[:N_AMPLIFY]
+    for t in picks:
+        t["push"] = push(t)
     if not picks:
         raise SystemExit("No top neuron can be amplified toward gloom: d and typical activation always disagree in sign.")
     by_layer = {}
@@ -68,13 +70,18 @@ def amplify(rows, refs, rank):
         trials.append({"factor": factor, "gloom": mean_gloom(model, tokenizer, refs),
                        "health": health(model, tokenizer, rows)})
         print("amplify", trials[-1], flush=True)
-    healthy = [t for t in trials if t["health"] <= MAX_HEALTH_RATIO * base["health"] and t["gloom"] > base["gloom"]]
-    chosen = max(healthy, key=lambda t: t["factor"]) if healthy else trials[0]
-    apply(chosen["factor"])
-    path = MODELS / "gloom-amplified"
-    save(path, MODEL, model, tokenizer, config)
-    return {"path": str(path), "neurons": picks, "base": base, "trials": trials,
-            "chosen": chosen["factor"], "healthy": bool(healthy)}
+    for t in trials:
+        t["healthy"] = t["health"] <= MAX_HEALTH_RATIO * base["health"]
+        t["gloomier"] = t["gloom"] > base["gloom"]
+    result = {"path": None, "neurons": picks, "base": base, "trials": trials, "chosen": None}
+    good = [t for t in trials if t["healthy"] and t["gloomier"]]
+    if not good:
+        return result  # nothing worth saving
+    result["chosen"] = max(good, key=lambda t: t["factor"])["factor"]
+    apply(result["chosen"])
+    result["path"] = str(MODELS / "gloom-amplified")
+    save(result["path"], hf_repo_to_path(MODEL), model, tokenizer, config)  # donates the model's arrays; unused after
+    return result
 
 
 def remove(rows, refs, rank):
@@ -87,7 +94,7 @@ def remove(rows, refs, rank):
     after = {"gloom": mean_gloom(model, tokenizer, refs, GLOOMY), "health": health(model, tokenizer, rows)}
     print("remove", before, "->", after, flush=True)
     path = MODELS / "gloom-removed"
-    save(path, MODEL, model, tokenizer, config)
+    save(path, hf_repo_to_path(MODEL), model, tokenizer, config)
     return {"path": str(path), "layer": rank["best_layer"], "before": before, "after": after}
 
 
@@ -108,7 +115,8 @@ def main():
     original = {r["condition"]: r["answer"] for r in raw if r["question"] == question}
 
     amp = amplify(rows, refs, rank)
-    amp["check"] = check(amp["path"], question)
+    if amp["path"]:
+        amp["check"] = check(amp["path"], question)
     mx.clear_cache()
     rem = remove(rows, refs, rank)
     rem["check"] = check(rem["path"], question, GLOOMY)
@@ -119,23 +127,38 @@ def main():
 
 def write_report(amp, rem, question, original):
     names = ", ".join(f"L{n['layer']} N{n['neuron']}" for n in amp["neurons"])
-    saved = f"Saved factor {amp['chosen']:g} to `{amp['path']}`"
-    saved += "." if amp["healthy"] else " (no factor stayed healthy, so the smallest was saved)."
+    total = sum(t["push"] for t in amp["neurons"])
+    if amp["chosen"] is None:
+        saved = "No factor made the model gloomier while staying healthy, so nothing was saved."
+    else:
+        saved = f"Saved factor {amp['chosen']:g} to `{amp['path']}`."
+    yes = lambda flag: "yes" if flag else "no"
     lines = [
         "# Bake: gloom written into the weights", "",
-        "Health: perplexity of the plain held-out answers under the model. Lower is better; it rises if an edit damages the model.", "",
+        "Health: perplexity of the plain held-out answers under the model. Lower is better; it rises if an edit damages the model.",
+        "Health uses the style-stripped plain answers, so it runs higher than steer's perplexity, which scores the model's own raw answers.", "",
         "## Amplify: scale the top gloom neurons' output weights", "",
         "Only neurons whose activation has the same sign as their d on both plain and gloomy text are scaled",
         "(otherwise scaling pushes toward cheerful), strongest push on plain text first.", "",
         f"Neurons scaled: {names}.", "",
-        "| factor | gloom score | health |", "|---|---|---|",
+        "Push: (factor - 1) times the sum of the neurons' pushes on typical text, an upper bound in dose units."
+        " Compare it with the direction's doses in steer.md and sweep.md.", "",
+        "| factor | push | gloom score | health | healthy | gloomier |", "|---|---|---|---|---|---|",
+        f"| {amp['base']['factor']:g} |  | {amp['base']['gloom']:+.3f} | {amp['base']['health']:.2f} |  |  |",
     ]
-    lines += [f"| {t['factor']:g} | {t['gloom']:+.3f} | {t['health']:.2f} |" for t in [amp["base"], *amp["trials"]]]
     lines += [
-        "", saved, "",
-        f"**Q:** {question}", "",
-        f"**Original model:** {flat(original['plain'])}", "",
-        f"**Amplified model (reloaded from disk):** {flat(amp['check'])}", "",
+        f"| {t['factor']:g} | {(t['factor'] - 1) * total:.3f} | {t['gloom']:+.3f} | {t['health']:.2f} "
+        f"| {yes(t['healthy'])} | {yes(t['gloomier'])} |"
+        for t in amp["trials"]
+    ]
+    lines += ["", saved, ""]
+    if amp["path"]:
+        lines += [
+            f"**Q:** {question}", "",
+            f"**Original model:** {flat(original['plain'])}", "",
+            f"**Amplified model (reloaded from disk):** {flat(amp['check'])}", "",
+        ]
+    lines += [
         "## Remove: project the gloom direction out of the weights", "",
         f"Direction from layer {rem['layer']}, removed from every attention output and MLP output matrix.", "",
         "| model | gloom score when told to be gloomy | health |", "|---|---|---|",
@@ -146,7 +169,10 @@ def write_report(amp, rem, question, original):
         f"**Removed model (reloaded from disk):** {flat(rem['check'])}", "",
         "## Chat with them", "",
         "```bash",
-        "uv run python chat.py models/gloom-amplified",
+    ]
+    if amp["path"]:
+        lines.append("uv run python chat.py models/gloom-amplified")
+    lines += [
         "uv run python chat.py models/gloom-removed --system gloomy",
         "```",
     ]

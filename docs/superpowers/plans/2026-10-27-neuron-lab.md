@@ -1735,6 +1735,180 @@ git commit -m "Add weight-baking step, a thinking-off chat script, and findings"
 
 ---
 
+### Task 14b: Follow-ups from the steer and bake review
+
+The first steer and bake runs exposed four measurement problems.
+
+1. **Steer doses were too large.** Dose +0.25 already moves plain text all the way to the gloomy mean on the direction, and doses of ±1 or more collapse the model.
+2. **The direction had no control.** Any disruption lowers the gloom score (35 of 40 random-neuron shifts were negative), so a direction shift needs a random-direction baseline.
+3. **Perplexity misses loops.** "offending offending ..." scored 1.49.
+4. **Amplify factors were far too small to test anything.** All 10 neurons together pushed at most 0.12 dose units at factor 8, while the direction needs about 0.25. Also, the fallback saved a model that was not gloomier and reported the wrong reason.
+
+**Files:**
+- Modify: `lab/metrics.py` (add `distinct_words`), `bake.py`
+- Test: `tests/test_metrics.py`
+- Create: `sweep.py`
+
+- [ ] **Step 1: Repetition metric (TDD)**
+
+Add to `tests/test_metrics.py` (and import `distinct_words`):
+
+```python
+def test_distinct_words_is_one_for_unique_words_and_low_for_loops():
+    assert distinct_words("a b c d") == 1.0
+    assert distinct_words("no " * 10) == 0.1
+    assert math.isnan(distinct_words(""))
+```
+
+Add to `lab/metrics.py`:
+
+```python
+def distinct_words(text):
+    """Share of distinct words. Normal prose sits around 0.6 to 0.8; a model stuck in a loop falls toward 0."""
+    words = text.split()
+    return len(set(words)) / len(words) if words else float("nan")
+```
+
+- [ ] **Step 2: Write `sweep.py`**
+
+```python
+"""Step 4b: a finer dose sweep around the useful range, with random-direction controls and a repetition check."""
+
+import json
+
+import mlx.core as mx
+import numpy as np
+
+from lab.data import heldout_refs, read_answers
+from lab.hooks import text_model
+from lab.metrics import distinct_words, gloom_score
+from lab.model import answer, load_model
+from lab.paths import RUNS
+from lab.report import flat, write_findings
+from lab.vectors import direction_push, neuron_push
+from steer import mean_perplexity, run
+
+DOSES = [-0.15, -0.1, -0.05, 0.05, 0.1, 0.2, 0.3, 0.4]
+N_RANDOM = 3  # random unit directions at the gloom direction's layer
+SHOW = 2  # held-out questions shown side by side in the report
+EXAMPLES = [("direction", -0.1), ("direction", 0.2), ("direction", 0.3), ("random 0", 0.3)]
+
+
+def mean_distinct(answers):
+    return float(np.nanmean([distinct_words(a) for a in answers.values()]))
+
+
+def main():
+    model, tokenizer, _ = load_model()
+    rank = json.loads((RUNS / "rank.json").read_text())
+    norm = np.load(RUNS / "acts.npz")["median_norm"]
+    best, top = rank["best_layer"], rank["top_neurons"][0]
+    gloom = mx.array(np.load(RUNS / "directions.npy")[best])
+    randoms = [mx.array(v) for v in np.random.default_rng(0).standard_normal((N_RANDOM, gloom.shape[0])).astype(np.float32)]
+    w_top = text_model(model).layers[top["layer"]].mlp.down_proj.weight
+    sign = 1.0 if top["d_train"] > 0 else -1.0
+    refs = heldout_refs(read_answers(RUNS / "answers.jsonl"))
+
+    base_scores = {q: gloom_score(model, tokenizer, q, ref) for q, ref in refs.items()}
+    base_answers = {q: answer(model, tokenizer, q) for q in refs}
+    results = {"baseline": {"answers": base_answers, "perplexity": mean_perplexity(model, tokenizer, base_answers),
+                            "distinct": mean_distinct(base_answers)}}
+    for dose in DOSES:
+        scale = float(norm[best])
+        pushes = {"direction": {best: direction_push(gloom, dose, scale)}}
+        pushes |= {f"random {k}": {best: direction_push(v, dose, scale)} for k, v in enumerate(randoms)}
+        pushes["top neuron"] = {top["layer"]: neuron_push(w_top, top["neuron"], sign, dose, float(norm[top["layer"]]))}
+        for name, adds in pushes.items():
+            result = run(model, tokenizer, refs, base_scores, adds, True)
+            result["distinct"] = mean_distinct(result["answers"])
+            results.setdefault(name, {})[dose] = result
+        print(f"dose {dose:+}: direction {results['direction'][dose]['shift']:+.3f}, "
+              f"random 0 {results['random 0'][dose]['shift']:+.3f}", flush=True)
+
+    (RUNS / "sweep.json").write_text(json.dumps(results, indent=2))
+    write_report(results, rank)
+
+
+def write_report(results, rank):
+    top = rank["top_neurons"][0]
+    randoms = [name for name in results if name.startswith("random")]
+    base = results["baseline"]
+    lines = [
+        "# Sweep: finer doses, with random-direction controls", "",
+        f"- Direction: layer {rank['best_layer']}. Control: {len(randoms)} random unit directions at the same layer and doses.",
+        f"- Top neuron: layer {top['layer']}, neuron {top['neuron']}, at the same doses.",
+        "- Shift: as in steer.md. Net shift: the direction's shift minus the mean random-direction shift at that dose,"
+        " which removes the drop any disruption causes.",
+        f"- Distinct: share of distinct words per answer; it falls toward 0 when the model loops. No push: {base['distinct']:.2f}.",
+        f"- Perplexity of the direction's answers, scored by the unpushed model. No push: {base['perplexity']:.2f}.",
+        "",
+        "| dose | direction shift | random shift (mean) | net shift | direction ppl | direction distinct "
+        "| random distinct (mean) | top neuron shift | top neuron distinct |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for dose in DOSES:
+        d, t = results["direction"][dose], results["top neuron"][dose]
+        random_shift = float(np.mean([results[n][dose]["shift"] for n in randoms]))
+        random_distinct = float(np.mean([results[n][dose]["distinct"] for n in randoms]))
+        lines.append(
+            f"| {dose:+} | {d['shift']:+.3f} | {random_shift:+.3f} | {d['shift'] - random_shift:+.3f} "
+            f"| {d['perplexity']:.2f} | {d['distinct']:.2f} | {random_distinct:.2f} | {t['shift']:+.3f} | {t['distinct']:.2f} |"
+        )
+    for q in list(base["answers"])[:SHOW]:
+        lines += ["", f"## {q}", "", f"**No push:** {flat(base['answers'][q])}"]
+        for name, dose in EXAMPLES:
+            lines += ["", f"**{name} {dose:+}:** {flat(results[name][dose]['answers'][q])}"]
+    write_findings("sweep.md", lines)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Check that it imports without loading the model: `uv run python -c "import sweep"`.
+
+- [ ] **Step 3: Fix amplify in `bake.py`**
+
+1. Import `hf_repo_to_path` with `save`. Pass `hf_repo_to_path(MODEL)` as `save`'s second argument in both `amplify` and `remove`, so saving needs no network.
+2. `FACTORS = [2.0, 8.0, 16.0, 32.0, 64.0]`, so the largest factors reach the direction's useful dose range.
+3. In `amplify`, after `picks` is chosen, store each pick's push: `for t in picks: t["push"] = push(t)`.
+4. Replace everything from `healthy = [...]` to the end of `amplify` with:
+
+```python
+    for t in trials:
+        t["healthy"] = t["health"] <= MAX_HEALTH_RATIO * base["health"]
+        t["gloomier"] = t["gloom"] > base["gloom"]
+    result = {"path": None, "neurons": picks, "base": base, "trials": trials, "chosen": None}
+    good = [t for t in trials if t["healthy"] and t["gloomier"]]
+    if not good:
+        return result  # nothing worth saving
+    result["chosen"] = max(good, key=lambda t: t["factor"])["factor"]
+    apply(result["chosen"])
+    result["path"] = str(MODELS / "gloom-amplified")
+    save(result["path"], hf_repo_to_path(MODEL), model, tokenizer, config)  # donates the model's arrays; unused after
+    return result
+```
+
+5. In `main`, call `check` for amplify only when `amp["path"]` is set.
+6. In `write_report`:
+   - The amplify table gains `push` (`(factor - 1)` times the sum of the picks' pushes: an upper bound in dose units, to compare with the direction's doses), `healthy` and `gloomier` columns. The base row leaves them blank.
+   - The saved line reads "No factor made the model gloomier while staying healthy, so nothing was saved." when `chosen` is None, otherwise "Saved factor X to `path`.".
+   - The amplified answer and its chat command appear only when a model was saved.
+   - Add one line under Health: "Health uses the style-stripped plain answers, so it runs higher than steer's perplexity, which scores the model's own raw answers."
+
+- [ ] **Step 4: Run**
+
+Delete the old `models/gloom-amplified` (the factor-2 fallback, not gloomier). Then run `uv run python bake.py` (about 2 minutes), and after it, `uv run python sweep.py` (about 30 minutes). Never run two model-loading scripts at once.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lab/metrics.py tests/test_metrics.py sweep.py bake.py findings/bake.md findings/sweep.md
+git commit -m "Add a fine steering sweep with random-direction controls; fix amplify factors and fallback"
+```
+
+---
+
 ### Task 15: Write up the findings
 
 **Files:**
@@ -1742,7 +1916,7 @@ git commit -m "Add weight-baking step, a thinking-off chat script, and findings"
 
 - [ ] **Step 1: Write the summary from the three reports**
 
-`findings.md` has these sections, each filled with numbers copied from `findings/rank.md`, `findings/steer.md` and `findings/bake.md`:
+`findings.md` has these sections, each filled with numbers copied from `findings/rank-raw.md`, `findings/rank.md`, `findings/steer.md`, `findings/sweep.md` and `findings/bake.md`. The punctuation confound (Task 12b), the random-direction controls and net shift (Task 14b), and the repetition measure belong in sections 2, 3 and 6:
 
 1. **Setup**: model, trait, data size (20 train and 8 held-out questions, 3 conditions), date.
 2. **Where gloom lives**: best layer and its held-out accuracy; the top 5 neurons with train and held-out d; whether the top neurons cluster in particular layers.

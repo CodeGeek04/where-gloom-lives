@@ -57,3 +57,9 @@ def gloom_score(model, tokenizer, question, ref, system=None):
     gloomy = mean_logprob(model, *reread_ids(tokenizer, question, ref["gloomy"], system))
     cheerful = mean_logprob(model, *reread_ids(tokenizer, question, ref["cheerful"], system))
     return gloomy - cheerful
+
+
+def distinct_words(text):
+    """Share of distinct words. Normal prose sits around 0.6 to 0.8; a model stuck in a loop falls toward 0."""
+    words = text.split()
+    return len(set(words)) / len(words) if words else float("nan")

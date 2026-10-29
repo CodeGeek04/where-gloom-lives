@@ -4,7 +4,7 @@ import mlx.core as mx
 import numpy as np
 import pytest
 
-from lab.metrics import best_layer, cohens_d, gloom_score, mean_logprob, perplexity, separation
+from lab.metrics import best_layer, cohens_d, distinct_words, gloom_score, mean_logprob, perplexity, separation
 
 
 class UniformModel:
@@ -107,3 +107,9 @@ def test_gloom_score_is_positive_when_the_model_prefers_the_gloomy_answer(tokeni
 def test_start_zero_is_refused():
     with pytest.raises(ValueError):
         mean_logprob(UniformModel(10), [1, 2, 3], start=0)
+
+
+def test_distinct_words_is_one_for_unique_words_and_low_for_loops():
+    assert distinct_words("a b c d") == 1.0
+    assert distinct_words("no " * 10) == 0.1
+    assert math.isnan(distinct_words(""))
