@@ -1,0 +1,163 @@
+{
+  "amplify": {
+    "path": null,
+    "neurons": [
+      {
+        "layer": 19,
+        "neuron": 254,
+        "d_train": 3.8838443756103516,
+        "d_heldout": 2.2275125980377197,
+        "mean_plain": 0.17994961142539978,
+        "mean_gloomy": 0.27340948581695557,
+        "mean_cheerful": 0.19236215949058533,
+        "push": 0.0035410862477479993
+      },
+      {
+        "layer": 20,
+        "neuron": 82,
+        "d_train": -3.9878897666931152,
+        "d_heldout": -2.5257561206817627,
+        "mean_plain": -0.16621851921081543,
+        "mean_gloomy": -0.2554885745048523,
+        "mean_cheerful": -0.1942165493965149,
+        "push": 0.002822264274763861
+      },
+      {
+        "layer": 31,
+        "neuron": 1985,
+        "d_train": 3.9780585765838623,
+        "d_heldout": 3.0102224349975586,
+        "mean_plain": 0.3282303214073181,
+        "mean_gloomy": 1.4476121664047241,
+        "mean_cheerful": 0.5400995016098022,
+        "push": 0.002508542377982047
+      },
+      {
+        "layer": 29,
+        "neuron": 1869,
+        "d_train": -3.77006459236145,
+        "d_heldout": -4.958751678466797,
+        "mean_plain": -0.1729368269443512,
+        "mean_gloomy": -0.3549969494342804,
+        "mean_cheerful": -0.19096414744853973,
+        "push": 0.0014654564875104126
+      },
+      {
+        "layer": 18,
+        "neuron": 1390,
+        "d_train": -4.019657611846924,
+        "d_heldout": -3.1074395179748535,
+        "mean_plain": -0.049394749104976654,
+        "mean_gloomy": -0.12360526621341705,
+        "mean_cheerful": -0.04442107677459717,
+        "push": 0.0014300818778307202
+      },
+      {
+        "layer": 28,
+        "neuron": 1121,
+        "d_train": -4.211331367492676,
+        "d_heldout": -3.7879467010498047,
+        "mean_plain": -0.13320249319076538,
+        "mean_gloomy": -0.2675428092479706,
+        "mean_cheerful": -0.11175642162561417,
+        "push": 0.0013687947839908456
+      },
+      {
+        "layer": 12,
+        "neuron": 8123,
+        "d_train": 3.7912983894348145,
+        "d_heldout": 3.037827968597412,
+        "mean_plain": 0.02222452685236931,
+        "mean_gloomy": 0.07166913896799088,
+        "mean_cheerful": 0.014564353041350842,
+        "push": 0.000971772541924083
+      },
+      {
+        "layer": 30,
+        "neuron": 6743,
+        "d_train": 3.854001998901367,
+        "d_heldout": 3.2127737998962402,
+        "mean_plain": 0.12566116452217102,
+        "mean_gloomy": 0.3172524571418762,
+        "mean_cheerful": 0.16422584652900696,
+        "push": 0.000964685874859649
+      },
+      {
+        "layer": 31,
+        "neuron": 14,
+        "d_train": 3.997300863265991,
+        "d_heldout": 3.2025513648986816,
+        "mean_plain": 0.14525923132896423,
+        "mean_gloomy": 2.628622055053711,
+        "mean_cheerful": 0.36878931522369385,
+        "push": 0.000947460874522189
+      },
+      {
+        "layer": 31,
+        "neuron": 3586,
+        "d_train": -3.8903965950012207,
+        "d_heldout": -2.9026472568511963,
+        "mean_plain": -0.22345130145549774,
+        "mean_gloomy": -0.539803147315979,
+        "mean_cheerful": -0.32455354928970337,
+        "push": 0.0009044767545751994
+      }
+    ],
+    "base": {
+      "factor": 1.0,
+      "gloom": -0.020624786615371704,
+      "health": 2.308017393678211
+    },
+    "trials": [
+      {
+        "factor": 2.0,
+        "gloom": -0.027411699295043945,
+        "health": 2.3097496740370955,
+        "healthy": true,
+        "gloomier": false
+      },
+      {
+        "factor": 8.0,
+        "gloom": -0.07761436700820923,
+        "health": 2.3268599359691167,
+        "healthy": true,
+        "gloomier": false
+      },
+      {
+        "factor": 16.0,
+        "gloom": -0.20158490538597107,
+        "health": 2.38434056384207,
+        "healthy": true,
+        "gloomier": false
+      },
+      {
+        "factor": 32.0,
+        "gloom": -0.6508296132087708,
+        "health": 2.6441852693523695,
+        "healthy": true,
+        "gloomier": false
+      },
+      {
+        "factor": 64.0,
+        "gloom": -2.133756399154663,
+        "health": 4.931490740691396,
+        "healthy": false,
+        "gloomier": false
+      }
+    ],
+    "chosen": null
+  },
+  "remove": {
+    "path": "models/gloom-removed",
+    "layer": 21,
+    "before": {
+      "gloom": 1.0998184829950333,
+      "health": 2.308017393678211
+    },
+    "after": {
+      "gloom": 0.20534077286720276,
+      "health": 2.647420388180142
+    },
+    "check": "Oh, the thought of buying a bicycle for commuting... it sounds so bright, doesn't it? Like a sunny day with no clouds in sight. But let me just take a deep, heavy sigh and look at the other side of things, shall we?\n\nYou know, every time you hop on a bike, you're leaving your warm, cozy car behind. And what if the weather turns? What if it starts to drizzle, or worse, a sudden storm rolls in? You'd be soaked, shivering, and maybe even a little miserable, wouldn't you? And then there"
+  }
+}

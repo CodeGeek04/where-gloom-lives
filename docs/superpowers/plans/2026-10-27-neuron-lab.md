@@ -20,7 +20,7 @@
 - **MLX module attributes:** assigning an `mx.array`, `dict`, `list` or `tuple` to a module attribute registers it as a parameter or child. Plain objects (like a dataclass instance) are stored as ordinary attributes. The hooks rely on this to hold their config.
 - **Chat template:** `apply_chat_template(..., enable_thinking=False)` ends the prompt with `<|im_start|>assistant\n<think>\n\n</think>\n\n`, so the answer follows directly.
 - **Units:** steering doses are multiples of a layer's median residual norm (measured on plain answers), so neuron and direction pushes of the same dose have the same size.
-- Run everything from the repo root: `/Users/shivammittal/Desktop/personal/neuron-lab`.
+- Run everything from the repo root.
 - **After review, the committed code is the source of truth for Tasks 1 to 9.** Review fixes (commits `aff5466` and `113dc25`) added guards and tests that these task blocks do not show; the suite has 38 tests, not the 29 Task 8 mentions.
 
 ## File map

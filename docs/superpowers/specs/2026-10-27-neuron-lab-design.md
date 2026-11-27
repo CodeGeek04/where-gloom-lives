@@ -7,7 +7,7 @@ Status: approved in chat
 
 A one-day, hands-on reproduction of personality-neuron work on a Mac: find the MLP neurons and the residual-stream direction that separate gloomy from cheerful text in Qwen3.5-4B, show that pushing them changes the model's mood, compare single neurons against the direction and against random neurons, then bake the best edit into the weights and chat with the edited model.
 
-This is a learning project. Nothing is published.
+This is a learning project.
 
 ## Setup
 

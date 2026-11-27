@@ -1,4 +1,11 @@
 .venv/
 __pycache__/
-runs/
 models/
+
+# Keep the small step outputs, not the 127 MB of activations or the logs
+runs/*
+!runs/answers.jsonl
+!runs/rank.json
+!runs/steer.json
+!runs/sweep.json
+!runs/bake.json
