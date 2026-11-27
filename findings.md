@@ -48,18 +48,14 @@ A finer sweep with three random directions as controls (`findings/sweep.md`) sho
 
 **Remove**: projecting the layer-21 direction out of every matrix that writes to the residual stream. Told to be gloomy, the original model scores +1.100 and the edited model +0.205, with health going from 2.31 to 2.65. The score drops by 81%, but the text does not fully follow: the edited model, reloaded from disk, still opens with "let me just take a deep, heavy sigh".
 
-## 5. Compared with the published claims
-
-The plan was to compare against published personality-neuron scripts for Qwen3.5-4B, which name layer 14 neuron 8949 and layer 13 neuron 7956 for a hostile persona. Neither is in this run's top 200 gloom neurons, and this run's top neurons sit later, in layers 16 to 31. The traits differ (hostile against gloomy), so this is not a contradiction, only a sign that different traits may live in different places.
-
-## 6. Caveats
+## 5. Caveats
 
 - 8 held-out questions (16 gloomy and cheerful answers).
 - One trait, and "gloomy" is defined by a system prompt, not by human labels.
 - Greedy decoding, one model, one run.
 - The gloom score is measured against the model's own gloomy and cheerful reference answers.
 
-## 7. Next ideas
+## 6. Next ideas
 
 1. Push gently at several layers at once instead of hard at one, and check whether the words follow the log-probs before the model breaks.
 2. Rank neurons by what they cause, by patching their activations, rather than by how differently they fire. The best detector here was not a writer.
